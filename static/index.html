@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NetAI Manager</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar: conversations -->
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <div class="brand">
+          <span class="logo-dot"></span>
+          <div>
+            <strong>NetAI</strong>
+            <small>اینباکس یکپارچه</small>
+          </div>
+        </div>
+        <div class="sidebar-actions">
+          <button type="button" id="btn-refresh" title="بروزرسانی">↻</button>
+          <button type="button" id="btn-settings" title="تنظیمات">⚙</button>
+        </div>
+      </header>
+      <div class="search-box">
+        <input id="search" type="search" placeholder="جستجوی گفتگو…" autocomplete="off" />
+      </div>
+      <div id="conv-list" class="conv-list"></div>
+      <footer class="sidebar-footer">
+        <a href="/docs" target="_blank">API</a>
+        <span id="account-count">۰ اکانت</span>
+      </footer>
+    </aside>
+
+    <!-- Main chat -->
+    <main class="chat-pane">
+      <header class="chat-header" id="chat-header">
+        <div class="chat-header-info">
+          <div id="chat-platform-badge" class="plat-badge" hidden></div>
+          <div>
+            <h2 id="chat-title">یک گفتگو را انتخاب کنید</h2>
+            <small id="chat-sub"></small>
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button type="button" id="btn-ai-reply" class="ghost" disabled>پاسخ هوشمند</button>
+        </div>
+      </header>
+
+      <div id="messages" class="messages">
+        <div class="empty-state">
+          <p>پیام‌های همه پیام‌رسان‌ها اینجا یکجا نمایش داده می‌شوند.</p>
+          <p class="muted">از سمت راست یک گفتگو را باز کنید یا از تنظیمات اکانت وصل کنید.</p>
+        </div>
+      </div>
+
+      <form id="composer" class="composer" hidden>
+        <textarea id="composer-input" rows="1" placeholder="پیام بنویسید…" ></textarea>
+        <button type="submit" id="btn-send">ارسال</button>
+      </form>
+    </main>
+
+    <!-- Settings drawer -->
+    <div id="settings-overlay" class="overlay" hidden></div>
+    <aside id="settings-panel" class="settings-panel" hidden>
+      <header>
+        <h2>تنظیمات</h2>
+        <button type="button" id="btn-close-settings">×</button>
+      </header>
+      <div class="settings-body">
+        <section>
+          <h3>هوش مصنوعی (اول AI)</h3>
+          <label>API Key AvalAI
+            <input id="s-ai-key" type="password" placeholder="کلید از داشبورد avalai.ir" />
+          </label>
+          <label>مدل
+            <input id="s-ai-model" type="text" placeholder="gpt-4o-mini" />
+          </label>
+          <label class="row">
+            <input id="s-ai-auto" type="checkbox" />
+            پاسخ خودکار فعال باشد
+          </label>
+        </section>
+
+        <section>
+          <h3>ربات مدیریت</h3>
+          <label>توکن ربات تلگرام
+            <input id="s-tg-bot" type="password" placeholder="123456:ABC…" />
+          </label>
+          <label>توکن ربات بله
+            <input id="s-bale-bot" type="password" />
+          </label>
+          <label>آیدی ادمین‌ها (با کاما)
+            <input id="s-admins" type="text" placeholder="123456789" />
+          </label>
+        </section>
+
+        <section>
+          <h3>ووکامرس</h3>
+          <label class="row">
+            <input id="s-woo-on" type="checkbox" />
+            فعال
+          </label>
+          <label>آدرس فروشگاه
+            <input id="s-woo-url" type="url" placeholder="https://shop.example.com" />
+          </label>
+          <label>Consumer Key
+            <input id="s-woo-key" type="text" />
+          </label>
+          <label>Consumer Secret
+            <input id="s-woo-secret" type="password" />
+          </label>
+          <button type="button" id="btn-woo-test" class="ghost">تست اتصال</button>
+          <p id="woo-test-result" class="muted"></p>
+        </section>
+
+        <section>
+          <h3>اتصال اکانت</h3>
+          <p class="muted">از API یا Swagger اکانت‌ها را وصل کنید. روبینو فقط تعداد فالوور.</p>
+          <div id="accounts-live" class="accounts-live"></div>
+        </section>
+      </div>
+      <footer>
+        <button type="button" id="btn-save-settings" class="primary">ذخیره تنظیمات</button>
+      </footer>
+    </aside>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
