@@ -8,7 +8,6 @@
 </head>
 <body>
   <div id="app">
-    <!-- Sidebar: conversations -->
     <aside class="sidebar">
       <header class="sidebar-header">
         <div class="brand">
@@ -29,11 +28,10 @@
       <div id="conv-list" class="conv-list"></div>
       <footer class="sidebar-footer">
         <a href="/docs" target="_blank">API</a>
-        <span id="account-count">۰ اکانت</span>
+        <span id="account-count">۰ گفتگو</span>
       </footer>
     </aside>
 
-    <!-- Main chat -->
     <main class="chat-pane">
       <header class="chat-header" id="chat-header">
         <div class="chat-header-info">
@@ -51,17 +49,16 @@
       <div id="messages" class="messages">
         <div class="empty-state">
           <p>پیام‌های همه پیام‌رسان‌ها اینجا یکجا نمایش داده می‌شوند.</p>
-          <p class="muted">از سمت راست یک گفتگو را باز کنید یا از تنظیمات اکانت وصل کنید.</p>
+          <p class="muted">اول شماره را ذخیره کنید، بعد از تنظیمات پیام‌رسان‌ها را وصل کنید.</p>
         </div>
       </div>
 
       <form id="composer" class="composer" hidden>
-        <textarea id="composer-input" rows="1" placeholder="پیام بنویسید…" ></textarea>
+        <textarea id="composer-input" rows="1" placeholder="پیام بنویسید…"></textarea>
         <button type="submit" id="btn-send">ارسال</button>
       </form>
     </main>
 
-    <!-- Settings drawer -->
     <div id="settings-overlay" class="overlay" hidden></div>
     <aside id="settings-panel" class="settings-panel" hidden>
       <header>
@@ -69,6 +66,23 @@
         <button type="button" id="btn-close-settings">×</button>
       </header>
       <div class="settings-body">
+
+        <section>
+          <h3>۱. شماره موبایل</h3>
+          <p class="muted">این شماره برای اتصال پیام‌رسان‌ها ذخیره می‌شود.</p>
+          <label>شماره
+            <input id="s-phone" type="tel" placeholder="09123456789" dir="ltr" />
+          </label>
+          <button type="button" id="btn-save-phone" class="ghost">ذخیره شماره</button>
+          <p id="phone-status" class="muted"></p>
+        </section>
+
+        <section>
+          <h3>۲. پیام‌رسان‌ها</h3>
+          <p class="muted">روی «اتصال» بزنید → کد می‌آید → کد را وارد کنید → تیک متصل.</p>
+          <div id="platform-cards" class="platform-cards"></div>
+        </section>
+
         <section>
           <h3>هوش مصنوعی (اول AI)</h3>
           <label>API Key AvalAI
@@ -114,17 +128,25 @@
           <button type="button" id="btn-woo-test" class="ghost">تست اتصال</button>
           <p id="woo-test-result" class="muted"></p>
         </section>
-
-        <section>
-          <h3>اتصال اکانت</h3>
-          <p class="muted">از API یا Swagger اکانت‌ها را وصل کنید. روبینو فقط تعداد فالوور.</p>
-          <div id="accounts-live" class="accounts-live"></div>
-        </section>
       </div>
       <footer>
         <button type="button" id="btn-save-settings" class="primary">ذخیره تنظیمات</button>
       </footer>
     </aside>
+
+    <!-- Code modal -->
+    <div id="code-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h3 id="code-modal-title">ورود کد تأیید</h3>
+        <p id="code-modal-desc" class="muted">کد را از SMS یا داخل پیام‌رسان وارد کنید.</p>
+        <input id="code-input" type="text" inputmode="numeric" placeholder="کد" dir="ltr" autocomplete="one-time-code" />
+        <div class="modal-actions">
+          <button type="button" id="btn-code-cancel" class="ghost">انصراف</button>
+          <button type="button" id="btn-code-ok" class="primary">تأیید و اتصال</button>
+        </div>
+        <p id="code-error" class="error"></p>
+      </div>
+    </div>
   </div>
   <script src="/static/app.js"></script>
 </body>

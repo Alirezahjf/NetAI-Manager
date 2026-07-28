@@ -45,7 +45,6 @@ class PhoneBody(BaseModel):
 class SendCodeBody(BaseModel):
     platform: str
     phone: Optional[str] = None
-    # optional extras e.g. api_id/api_hash for telegram
     credentials: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -82,7 +81,6 @@ async def save_phone(body: PhoneBody):
 
 @router.get("/status")
 async def platforms_status():
-    """Status of each platform for the Adam-style connect menu."""
     profile = load_profile()
     phone = profile.get("phone") or ""
     accounts = account_manager.list_accounts()
@@ -118,7 +116,6 @@ async def platforms_status():
 
 @router.post("/send-code")
 async def send_code(body: SendCodeBody):
-    """Step 1: send verification code for a messenger."""
     platform = _plat(body.platform)
     if platform not in PLATFORM_MAP:
         raise HTTPException(400, f"Unsupported platform: {platform}")
@@ -138,11 +135,9 @@ async def send_code(body: SendCodeBody):
     client = cls(account_id=phone, display_name="")
 
     try:
-        # Prefer explicit start_auth if available
         if hasattr(client, "start_auth"):
             data = await client.start_auth(phone)
         else:
-            # connect with only phone should trigger code send and return False
             ok = await client.connect(phone=phone, **body.credentials)
             if ok:
                 account_manager.register(client)
@@ -158,7 +153,7 @@ async def send_code(body: SendCodeBody):
                 "transaction_hash": getattr(client, "_transaction_hash", None),
             }
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, detail=str(exc)) from exp
+        raise HTTPException(400, detail=str(exc)) from exc
 
     pending = {
         "phone": phone,
@@ -167,10 +162,8 @@ async def send_code(body: SendCodeBody):
         "raw": data if isinstance(data, dict) else {},
         **body.credentials,
     }
-    # keep temporary client reference on pending for platforms that need it
     set_pending(platform, pending)
-    # stash client under a soft key so verify can reuse same instance if needed
-    account_manager.register(client)  # not yet fully connected; is_connected may be False
+    account_manager.register(client)
 
     return {
         "status": "code_sent",
@@ -184,7 +177,6 @@ async def send_code(body: SendCodeBody):
 
 @router.post("/verify-code")
 async def verify_code(body: VerifyCodeBody):
-    """Step 2: enter code → account connected."""
     platform = _plat(body.platform)
     if platform not in PLATFORM_MAP:
         raise HTTPException(400, f"Unsupported platform: {platform}")
@@ -208,22 +200,25 @@ async def verify_code(body: VerifyCodeBody):
         "code": body.code,
         "phone_code_hash": phone_code_hash,
         "transaction_hash": transaction_hash,
-        **(pending if isinstance(pending, dict) else {}),
+        **{k: v for k, v in (pending or {}).items() if k not in ("raw",)},
         **body.credentials,
     }
 
     try:
         if hasattr(client, "verify_code"):
-            await client.verify_code(
-                body.code,
-                phone_code_hash=phone_code_hash,
-                transaction_hash=transaction_hash,
-            )
+            kwargs = {"code": body.code}
+            if phone_code_hash:
+                kwargs["phone_code_hash"] = phone_code_hash
+            # some adapters accept transaction_hash
+            try:
+                await client.verify_code(**kwargs)
+            except TypeError:
+                await client.verify_code(body.code, phone_code_hash=phone_code_hash)
             ok = client.is_connected
         else:
             ok = await client.connect(**creds)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, detail=str(exc)) from exp
+        raise HTTPException(400, detail=str(exc)) from exc
 
     if not ok and not client.is_connected:
         raise HTTPException(400, "کد تأیید نامعتبر است یا اتصال برقرار نشد")
@@ -259,9 +254,8 @@ async def connect_account(body: ConnectRequest):
     try:
         ok = await client.connect(**body.credentials)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, detail=str(exc)) from exp
+        raise HTTPException(400, detail=str(exc)) from exc
 
-    # phone-only → code was sent
     if not ok:
         pending = {
             "phone": body.credentials.get("phone") or body.account_id,
@@ -308,4 +302,4 @@ async def account_me(platform: str, account_id: str):
     try:
         return await client.get_me()
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, detail=str(exc)) from exp
+        raise HTTPException(400, detail=str(exc)) from exc
