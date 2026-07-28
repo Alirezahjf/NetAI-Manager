@@ -1,4 +1,4 @@
-"""Unified AI engine supporting Ollama and OpenAI-compatible APIs."""
+"""Unified AI engine — AvalAI (اول AI) first, plus Ollama / OpenAI-compatible."""
 
 from __future__ import annotations
 
@@ -11,7 +11,16 @@ from app.config import get_settings
 
 
 class AIEngine:
-    """Generate replies and content using configured AI provider."""
+    """
+    Generate replies and content.
+
+    Default provider is **AvalAI** (اول AI):
+      base_url = https://api.avalai.ir/v1
+      auth     = Bearer AVALAI_API_KEY
+      format   = OpenAI chat.completions (future-proof for model upgrades)
+
+    Docs: https://docs.avalai.ir
+    """
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -27,8 +36,19 @@ class AIEngine:
     ) -> str:
         system = system or self.settings.ai_system_prompt
         model = model or self.settings.ai_model
-        provider = self.settings.ai_provider.lower()
+        provider = self.settings.ai_provider.lower().strip()
 
+        if provider in ("avalai", "aval", "اول", "اولai", "اول-ai"):
+            return await self._openai_compatible(
+                prompt,
+                system=system,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                api_key=self.settings.avalai_api_key,
+                base_url=self.settings.avalai_base_url,
+                provider_label="AvalAI",
+            )
         if provider == "ollama":
             return await self._ollama(prompt, system=system, model=model, temperature=temperature)
         if provider in ("openai", "openai-compatible"):
@@ -38,6 +58,9 @@ class AIEngine:
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                api_key=self.settings.openai_api_key,
+                base_url=self.settings.openai_base_url or "https://api.openai.com/v1",
+                provider_label="OpenAI",
             )
         raise ValueError(f"Unsupported AI provider: {provider}")
 
@@ -49,7 +72,6 @@ class AIEngine:
         chat_context: str = "",
         extra_instructions: str = "",
     ) -> str:
-        """High-level helper for auto-reply scenarios."""
         system = self.settings.ai_system_prompt
         if extra_instructions:
             system = f"{system}\n\nExtra instructions:\n{extra_instructions}"
@@ -61,6 +83,31 @@ class AIEngine:
             "Write a natural reply. Do not add explanations outside the reply itself."
         )
         return await self.generate(user_prompt, system=system)
+
+    async def list_models(self) -> list[dict[str, Any]]:
+        """List models from AvalAI (or configured OpenAI-compatible endpoint)."""
+        provider = self.settings.ai_provider.lower().strip()
+        if provider in ("avalai", "aval", "اول", "اولai", "اول-ai"):
+            key = self.settings.avalai_api_key
+            base = self.settings.avalai_base_url.rstrip("/")
+        else:
+            key = self.settings.openai_api_key
+            base = (self.settings.openai_base_url or "https://api.openai.com/v1").rstrip("/")
+
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Public list works without key on AvalAI
+            if provider in ("avalai", "aval", "اول", "اولai", "اول-ai") and not key:
+                resp = await client.get("https://api.avalai.ir/public/models")
+            else:
+                resp = await client.get(f"{base}/models", headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, dict) and "data" in data:
+                return data["data"]
+            if isinstance(data, list):
+                return data
+            return [data]
 
     async def _ollama(
         self,
@@ -94,19 +141,22 @@ class AIEngine:
         model: str,
         temperature: float,
         max_tokens: int,
+        api_key: Optional[str],
+        base_url: str,
+        provider_label: str,
     ) -> str:
-        if not self.settings.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set")
+        if not api_key:
+            raise RuntimeError(
+                f"{provider_label} API key is not set. "
+                f"For AvalAI set AVALAI_API_KEY in .env (from https://avalai.ir dashboard)."
+            )
 
         try:
             from openai import AsyncOpenAI
         except ImportError as exc:
             raise RuntimeError("Install openai package: pip install openai") from exc
 
-        client = AsyncOpenAI(
-            api_key=self.settings.openai_api_key,
-            base_url=self.settings.openai_base_url or None,
-        )
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url.rstrip("/"))
         completion = await client.chat.completions.create(
             model=model,
             temperature=temperature,
@@ -119,5 +169,4 @@ class AIEngine:
         return (completion.choices[0].message.content or "").strip()
 
 
-# Shared instance
 ai_engine = AIEngine()

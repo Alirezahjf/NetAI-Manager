@@ -13,17 +13,22 @@ python-dotenv>=1.0.1
 httpx>=0.27.0
 aiohttp>=3.10.0
 
-# Telegram (official MTProto clients)
+# Telegram
 telethon>=1.36.0
-# pyrogram>=2.0.0  # alternative if preferred
 
-# AI
+# AI (AvalAI is OpenAI-compatible)
 openai>=1.54.0
-# for local Ollama you mainly need httpx (already listed)
+
+# Iranian platforms (from ozv_grams stack)
+pyrubi>=2.0.0
+rubinobot>=1.0.0
+# balethon is vendored/used via path from ozv_grams patterns;
+# if published: pip install balethon
+protobuf>=4.25.0
+h2>=4.1.0
+httpx[http2]>=0.27.0
 
 # Email
-aioimaplib2>=0.1.0; python_version < "3.13"
-# or use standard imaplib + aiosmtplib
 aiosmtplib>=3.0.0
 
 # YouTube
@@ -36,12 +41,5 @@ python-dateutil>=2.9.0
 tenacity>=9.0.0
 loguru>=0.7.2
 
-# SoroPy is installed separately for better control:
+# SoroPy (Soroush):
 #   pip install "soropy[ws]>=1.3.6"
-# Or from GitHub:
-#   pip install "soropy[ws] @ git+https://github.com/Alirezahjf/soropy.git@main#subdirectory=soropy"
-
-# Dev (optional)
-# pytest>=8.3.0
-# ruff>=0.7.0
-# mypy>=1.13.0

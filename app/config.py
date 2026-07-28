@@ -15,19 +15,26 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "NetAI-Manager"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     secret_key: str = "change-me"
     debug: bool = True
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # AI
-    ai_provider: str = "ollama"  # ollama | openai | openai-compatible
-    ai_model: str = "llama3.2"
+    # AI — default: AvalAI (اول AI) OpenAI-compatible gateway
+    # Providers: avalai | ollama | openai | openai-compatible
+    ai_provider: str = "avalai"
+    ai_model: str = "gpt-4o-mini"
     ai_system_prompt: str = (
         "You are a helpful, professional assistant that helps manage social accounts. "
         "Always reply in the same language as the user message. Be concise and natural."
     )
+
+    # AvalAI (اول AI) — https://docs.avalai.ir
+    avalai_api_key: Optional[str] = None
+    avalai_base_url: str = "https://api.avalai.ir/v1"
+    # Alternate in-country mirror (optional): https://api.avalapis.ir/v1
+
     ollama_base_url: str = "http://localhost:11434"
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = "https://api.openai.com/v1"
@@ -37,7 +44,7 @@ class Settings(BaseSettings):
     telegram_api_hash: Optional[str] = None
     telegram_session_name: str = "netai_telegram"
 
-    # Bale
+    # Bale (bot token optional; user mode uses phone auth)
     bale_bot_token: Optional[str] = None
 
     # Soroush
