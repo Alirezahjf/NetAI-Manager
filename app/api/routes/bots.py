@@ -1,14 +1,15 @@
-"""Telegram & Bale management bots — notify admins / remote control hooks."""
+"""Telegram & Bale management bots."""
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 from pydantic import BaseModel
 
+from app.core.account_manager import account_manager
 from app.core.settings_store import load_settings
 
 router = APIRouter()
@@ -28,7 +29,6 @@ async def _telegram_send(token: str, chat_id: str | int, text: str) -> dict:
 
 
 async def _bale_send(token: str, chat_id: str | int, text: str) -> dict:
-    # Bale bot API is Telegram-compatible on botapi.bale.ai
     url = f"https://tapi.bale.ai/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, json={"chat_id": chat_id, "text": text})
@@ -80,9 +80,19 @@ async def bots_status():
     }
 
 
+def _status_text() -> str:
+    lines = ["NetAI Manager — وضعیت"]
+    for c in account_manager.all_clients():
+        plat = c.platform.value if hasattr(c.platform, "value") else str(c.platform)
+        st = "🟢" if c.is_connected else "🔴"
+        lines.append(f"{st} {plat}:{c.account_id}")
+    if len(lines) == 1:
+        lines.append("اکانتی متصل نیست")
+    return "\n".join(lines)
+
+
 @router.post("/telegram/webhook")
 async def telegram_webhook(update: dict[str, Any]):
-    """Minimal webhook: admin can send /status or relay notes."""
     s = load_settings().get("bots", {})
     token = s.get("telegram_bot_token")
     if not token:
@@ -97,30 +107,23 @@ async def telegram_webhook(update: dict[str, Any]):
     if not chat_id:
         return {"ok": True}
 
-    if str(chat_id) not in admins and admins:
+    if admins and str(chat_id) not in admins:
         await _telegram_send(token, chat_id, "دسترسی ندارید.")
         return {"ok": True}
 
     if text.startswith("/start") or text.startswith("/status"):
-        from app.platforms.registry import platform_registry
-
-        lines = ["NetAI Manager — وضعیت"]
-        for k, p in platform_registry.all().items():
-            st = "🟢" if p.is_connected else "🔴"
-            lines.append(f"{st} {k}")
-        await _telegram_send(token, chat_id, "\n".join(lines))
+        await _telegram_send(token, chat_id, _status_text())
     else:
         await _telegram_send(
             token,
             chat_id,
-            "دستورات:\n/status — وضعیت اکانت‌ها\nپیام‌ها را از وب‌اپ مدیریت کنید.",
+            "دستورات:\n/status — وضعیت اکانت‌ها\nمدیریت کامل از وب‌اپ NetAI",
         )
     return {"ok": True}
 
 
 @router.post("/bale/webhook")
 async def bale_webhook(update: dict[str, Any]):
-    """Bale bot webhook (Telegram-compatible payload)."""
     s = load_settings().get("bots", {})
     token = s.get("bale_bot_token")
     if not token:
@@ -134,10 +137,5 @@ async def bale_webhook(update: dict[str, Any]):
         return {"ok": True}
 
     if text.startswith("/status") or text.startswith("/start"):
-        from app.platforms.registry import platform_registry
-
-        lines = ["NetAI Manager"]
-        for k, p in platform_registry.all().items():
-            lines.append(f"{'✓' if p.is_connected else '×'} {k}")
-        await _bale_send(token, chat_id, "\n".join(lines))
+        await _bale_send(token, chat_id, _status_text())
     return {"ok": True}

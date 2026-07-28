@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from loguru import logger
 
@@ -10,13 +10,12 @@ from app.platforms.base import BasePlatform, PlatformType
 
 
 class AccountManager:
-    """Keeps track of all connected platform instances."""
-
     def __init__(self) -> None:
-        # key: "{platform}:{account_id}"
         self._clients: Dict[str, BasePlatform] = {}
 
     def _key(self, platform: PlatformType | str, account_id: str) -> str:
+        if hasattr(platform, "value"):
+            platform = platform.value
         return f"{platform}:{account_id}"
 
     def register(self, client: BasePlatform) -> None:
@@ -36,15 +35,17 @@ class AccountManager:
     def list_accounts(self, platform: Optional[PlatformType | str] = None) -> List[dict]:
         result = []
         for key, client in self._clients.items():
-            if platform and str(client.platform) != str(platform):
+            plat = client.platform.value if hasattr(client.platform, "value") else str(client.platform)
+            if platform and plat != str(platform):
                 continue
             result.append(
                 {
                     "key": key,
-                    "platform": str(client.platform),
+                    "platform": plat,
                     "account_id": client.account_id,
                     "display_name": client.display_name,
                     "is_connected": client.is_connected,
+                    "connected": client.is_connected,
                 }
             )
         return result

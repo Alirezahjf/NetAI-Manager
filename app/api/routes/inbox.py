@@ -7,7 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.platforms.registry import platform_registry
+from app.core.account_manager import account_manager
 
 router = APIRouter()
 
@@ -22,6 +22,10 @@ PLATFORM_META = {
 }
 
 
+def _plat_str(p) -> str:
+    return p.value if hasattr(p, "value") else str(p).split(".")[-1].lower()
+
+
 class SendBody(BaseModel):
     platform: str
     account_id: str
@@ -32,22 +36,22 @@ class SendBody(BaseModel):
 
 @router.get("/conversations")
 async def list_conversations():
-    """Aggregate chats from all connected accounts."""
     conversations: list[dict[str, Any]] = []
-    for key, platform in platform_registry.all().items():
-        if not platform.is_connected:
+    for client in account_manager.all_clients():
+        if not client.is_connected:
             continue
-        plat = platform.platform.value if hasattr(platform.platform, "value") else str(platform.platform)
+        plat = _plat_str(client.platform)
         meta = PLATFORM_META.get(plat, {"name": plat, "color": "#888", "icon": plat})
+        key = f"{plat}:{client.account_id}"
         try:
-            chats = await platform.get_chats(limit=40)
+            chats = await client.get_chats(limit=40)
         except Exception as exp:
             conversations.append(
                 {
                     "id": f"{key}:error",
                     "platform": plat,
-                    "account_id": platform.account_id,
-                    "title": f"خطا در دریافت چت‌ها",
+                    "account_id": client.account_id,
+                    "title": "خطا در دریافت چت‌ها",
                     "error": str(exp),
                     "meta": meta,
                 }
@@ -59,8 +63,8 @@ async def list_conversations():
                     "id": f"{key}:{c.id}",
                     "platform": plat,
                     "account_key": key,
-                    "account_id": platform.account_id,
-                    "account_name": platform.display_name,
+                    "account_id": client.account_id,
+                    "account_name": client.display_name,
                     "chat_id": c.id,
                     "title": c.title,
                     "chat_type": c.chat_type,
@@ -69,15 +73,13 @@ async def list_conversations():
                     "meta": meta,
                 }
             )
-    # sort: unread first then title
     conversations.sort(key=lambda x: (-(x.get("unread") or 0), x.get("title") or ""))
     return {"count": len(conversations), "conversations": conversations}
 
 
 @router.get("/messages")
 async def list_messages(platform: str, account_id: str, chat_id: str, limit: int = 50):
-    key = f"{platform}:{account_id}"
-    p = platform_registry.get(key)
+    p = account_manager.get(platform, account_id)
     if not p or not p.is_connected:
         raise HTTPException(404, "Account not connected")
     try:
@@ -107,8 +109,7 @@ async def list_messages(platform: str, account_id: str, chat_id: str, limit: int
 
 @router.post("/send")
 async def send_message(body: SendBody):
-    key = f"{body.platform}:{body.account_id}"
-    p = platform_registry.get(key)
+    p = account_manager.get(body.platform, body.account_id)
     if not p or not p.is_connected:
         raise HTTPException(404, "Account not connected")
     try:
