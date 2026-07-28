@@ -31,7 +31,7 @@ async def generate(body: GenerateRequest):
             model=body.model,
             temperature=body.temperature,
         )
-    except Exception as exp:  # noqa: BLE001
+    except Exception as exp:
         raise HTTPException(400, detail=str(exp)) from exp
     return {"text": text}
 
@@ -45,6 +45,16 @@ async def smart_reply(body: ReplyRequest):
             chat_context=body.chat_context,
             extra_instructions=body.extra_instructions,
         )
-    except Exception as exp:  # noqa: BLE001
+    except Exception as exp:
         raise HTTPException(400, detail=str(exp)) from exp
     return {"reply": text}
+
+
+@router.get("/models")
+async def list_models():
+    """List models available via AvalAI (or configured provider)."""
+    try:
+        models = await ai_engine.list_models()
+    except Exception as exp:
+        raise HTTPException(400, detail=str(exp)) from exp
+    return {"count": len(models), "models": models}
