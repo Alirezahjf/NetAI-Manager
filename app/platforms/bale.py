@@ -11,10 +11,7 @@ from app.platforms.base import BasePlatform, ChatInfo, MessageInfo, PlatformType
 
 
 class BalePlatform(BasePlatform):
-    """
-    Bale user-mode auth (phone + SMS code) and session (JWT),
-    following the same flow as ozv_grams/platforms/bale.
-    """
+    """Bale user-mode auth (phone + SMS) and JWT session (ozv_grams flow)."""
 
     platform = PlatformType.BALE
 
@@ -30,7 +27,7 @@ class BalePlatform(BasePlatform):
         except ImportError as exc:
             raise RuntimeError(
                 "balethon (از ozv_grams) نصب نیست. "
-                "پوشه balethon را از ریپوی ozv_grams کنار پروژه قرار دهید یا PYTHONPATH را تنظیم کنید."
+                "پوشه balethon را از ریپوی ozv_grams کنار پروژه قرار دهید."
             ) from exp
 
         phone = phone_number.replace("+", "").replace(" ", "")
@@ -140,7 +137,7 @@ class BalePlatform(BasePlatform):
             "user_id": self._session.get("user_id"),
             "name": self._session.get("name"),
             "phone": self._session.get("phone"),
-            "has_jwt": bool(self._session.get("jwt")),
+            "has_jwt": bool(self._session.get("jwt"))
         }
 
     async def get_chats(self, limit: int = 50) -> List[ChatInfo]:
