@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any, List, Optional
 
@@ -15,9 +14,6 @@ class BalePlatform(BasePlatform):
     """
     Bale user-mode auth (phone + SMS code) and session (JWT),
     following the same flow as ozv_grams/platforms/bale.
-
-    Full chat/send capabilities expand when balethon Client is available
-    with a stored JWT. Join/search helpers mirror ozv_grams workers.
     """
 
     platform = PlatformType.BALE
@@ -27,19 +23,15 @@ class BalePlatform(BasePlatform):
         self._session: dict[str, Any] = {}
         self._auth_pending: dict[str, Any] = {}
 
-    # ----- auth (2-step like ozv_grams) -----
-
     async def start_auth(self, phone_number: str) -> dict:
-        """Send SMS code. Returns transaction_hash for verify step."""
         try:
             from balethon.proto import request_pb2, response_pb2  # type: ignore
             from balethon.network.http2connection import HTTP2Connection  # type: ignore
-        except ImportError:
-            # Fallback: instruct to use vendored balethon from ozv_grams
+        except ImportError as exc:
             raise RuntimeError(
                 "balethon (از ozv_grams) نصب نیست. "
                 "پوشه balethon را از ریپوی ozv_grams کنار پروژه قرار دهید یا PYTHONPATH را تنظیم کنید."
-            )
+            ) from exp
 
         phone = phone_number.replace("+", "").replace(" ", "")
         if phone.startswith("0"):
@@ -110,12 +102,6 @@ class BalePlatform(BasePlatform):
         return dict(self._session)
 
     async def connect(self, **credentials: Any) -> bool:
-        """
-        credentials options:
-          - jwt + user_id (+ name)  → resume session
-          - phone + code            → full login (start_auth + verify if needed)
-          - phone only              → start_auth only (is_connected stays False until verify)
-        """
         if credentials.get("jwt") and credentials.get("user_id"):
             self._session = {
                 "jwt": credentials["jwt"],
@@ -140,7 +126,6 @@ class BalePlatform(BasePlatform):
             await self.verify_code(code)
             return True
 
-        # Only start auth
         await self.start_auth(phone)
         logger.info("Bale SMS code sent — call connect again with code=...")
         return False
@@ -159,9 +144,7 @@ class BalePlatform(BasePlatform):
         }
 
     async def get_chats(self, limit: int = 50) -> List[ChatInfo]:
-        """Requires balethon Client with full dialogs API — extend as needed."""
         self._ensure()
-        logger.warning("Bale get_chats: use balethon Client dialogs when available")
         return []
 
     async def get_messages(self, chat_id: str, limit: int = 50) -> List[MessageInfo]:
@@ -177,13 +160,10 @@ class BalePlatform(BasePlatform):
         **kwargs: Any,
     ) -> MessageInfo:
         self._ensure()
-        # Prefer balethon Client if importable
         try:
             from balethon import Client  # type: ignore
 
-            # Userbot mode needs phone file session; with JWT we use WS path via Client if supported
             client = Client(str(self._session.get("phone") or self.account_id))
-            # If session dict already has jwt, inject
             if self._session.get("jwt"):
                 client.session = {
                     "id": self._session["user_id"],
@@ -210,14 +190,6 @@ class BalePlatform(BasePlatform):
         except Exception as exc:
             logger.error(f"Bale send_message failed: {exc}")
             raise RuntimeError(f"Bale send failed: {exc}") from exp
-
-    async def join_target(self, target_link: str) -> dict:
-        """Join group/channel — same logic as ozv_grams BaleWorker.join."""
-        self._ensure()
-        # Re-use simplified import of worker pattern via dynamic call
-        raise NotImplementedError(
-            "برای join از worker بله در ozv_grams استفاده کنید یا متد join را با JWT کامل کنید."
-        )
 
     def _ensure(self) -> None:
         if not self.is_connected or not self._session.get("jwt"):
