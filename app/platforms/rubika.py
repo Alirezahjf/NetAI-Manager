@@ -1,4 +1,4 @@
-"""Rubika (روبیکا) adapter — based on ozv_grams + pyrubi."""
+"""Rubika adapter — accurate pyrubi.Client API (AliGanji1/Pyrubi)."""
 
 from __future__ import annotations
 
@@ -12,19 +12,32 @@ from app.platforms.base import BasePlatform, ChatInfo, MessageInfo, PlatformType
 
 class RubikaPlatform(BasePlatform):
     """
-    Auth + session via pyrubi (same as ozv_grams/platforms/rubika/worker.py).
-    Session fields: auth, private_key, user, user_id, name, username
+    Uses official high-level Client from pyrubi:
 
-    Rubino reuses the same `auth` string.
+        from pyrubi import Client
+        client = Client(auth=..., private=...)
+        client.get_chats()
+        client.get_messages(object_guid=...)
+        client.send_text(object_guid=..., text=...)
+
+    Docs/source: https://github.com/AliGanji1/Pyrubi
     """
 
     platform = PlatformType.RUBIKA
 
     def __init__(self, account_id: str, display_name: str = "") -> None:
         super().__init__(account_id, display_name)
+        self._client: Any = None
         self._session: dict[str, Any] = {}
-        self._phone_code_hash: Optional[str] = None
         self._phone: Optional[str] = None
+        self._phone_code_hash: Optional[str] = None
+
+    # ---------- client factory ----------
+
+    def _build_client(self, auth: str, private_key: str):
+        from pyrubi import Client
+
+        return Client(auth=auth, private=private_key)
 
     def _tmp_methods(self):
         from pyrubi.methods import Methods as RubikaMethod
@@ -38,17 +51,7 @@ class RubikaPlatform(BasePlatform):
             showProgressBar=False,
         )
 
-    def _methods(self):
-        from pyrubi.methods import Methods as RubikaMethod
-
-        return RubikaMethod(
-            sessionData=self._session,
-            platform="web",
-            apiVersion=6,
-            proxy=None,
-            timeOut=15,
-            showProgressBar=False,
-        )
+    # ---------- auth ----------
 
     async def start_auth(self, phone_number: str) -> dict:
         phone = phone_number.replace("+", "").replace(" ", "")
@@ -61,7 +64,7 @@ class RubikaPlatform(BasePlatform):
             pch = result.get("phone_code_hash")
             if not pch:
                 if result.get("status") == "SendPassKey":
-                    raise ValueError("این شماره رمز دوم دارد و فعلاً پشتیبانی نمی‌شود.")
+                    raise ValueError("این شماره رمز دوم دارد.")
                 raise ValueError(f"خطا در ارسال کد: {result}")
             return {"phone_code_hash": pch, "phone_number": phone}
 
@@ -76,7 +79,7 @@ class RubikaPlatform(BasePlatform):
         phone = self._phone or self.account_id
         pch = phone_code_hash or self._phone_code_hash
         if not pch:
-            raise RuntimeError("Call start_auth first")
+            raise RuntimeError("ابتدا start_auth را صدا بزنید")
 
         def _verify() -> dict:
             tmp = self._tmp_methods()
@@ -94,30 +97,29 @@ class RubikaPlatform(BasePlatform):
                 "username": user.get("username", ""),
             }
             try:
-                methods = RubikaMethod = None  # noqa
-                from pyrubi.methods import Methods as RM
-
-                RM(
-                    sessionData=session,
-                    platform="web",
-                    apiVersion=6,
-                    proxy=None,
-                    timeOut=10,
-                    showProgressBar=False,
-                ).registerDevice(deviceModel="netai-manager")
+                client = self._build_client(session["auth"], session["private_key"])
+                # register device best-effort
+                if hasattr(client, "methods"):
+                    client.methods.registerDevice(deviceModel="netai-manager")
             except Exception:
                 pass
             return session
 
         self._session = await asyncio.to_thread(_verify)
+        self._client = self._build_client(self._session["auth"], self._session["private_key"])
         self.account_id = self._session.get("user_id") or phone
         self.display_name = self._session.get("name") or self.account_id
         self.is_connected = True
         logger.info(f"Rubika connected: {self.display_name}")
-        return dict(self._session)
+        return {
+            "auth": self._session["auth"],
+            "private_key": self._session["private_key"],
+            "user_id": self._session.get("user_id"),
+            "name": self._session.get("name"),
+            "username": self._session.get("username"),
+        }
 
     async def connect(self, **credentials: Any) -> bool:
-        # Resume with existing session
         if credentials.get("auth") and credentials.get("private_key"):
             self._session = {
                 "auth": credentials["auth"],
@@ -127,6 +129,7 @@ class RubikaPlatform(BasePlatform):
                 "name": credentials.get("name", ""),
                 "username": credentials.get("username", ""),
             }
+            self._client = self._build_client(self._session["auth"], self._session["private_key"])
             self.account_id = str(self._session.get("user_id") or self.account_id)
             self.display_name = self._session.get("name") or self.account_id
             self.is_connected = True
@@ -134,7 +137,6 @@ class RubikaPlatform(BasePlatform):
 
         phone = credentials.get("phone") or self.account_id
         code = credentials.get("code")
-
         if code:
             if credentials.get("phone_code_hash"):
                 self._phone_code_hash = credentials["phone_code_hash"]
@@ -143,11 +145,11 @@ class RubikaPlatform(BasePlatform):
             return True
 
         await self.start_auth(phone)
-        logger.info("Rubika SMS code sent — connect again with code=...")
         return False
 
     async def disconnect(self) -> None:
         self.is_connected = False
+        self._client = None
 
     async def get_me(self) -> dict:
         return {
@@ -155,54 +157,45 @@ class RubikaPlatform(BasePlatform):
             "user_id": self._session.get("user_id"),
             "name": self._session.get("name"),
             "username": self._session.get("username"),
-            # auth is sensitive — only expose presence
             "has_auth": bool(self._session.get("auth")),
         }
 
-    def export_session_for_rubino(self) -> dict:
-        """Rubino shares Rubika auth."""
+    def export_auth_for_rubino(self) -> str:
         self._ensure()
-        return {
-            "auth": self._session["auth"],
-            "private_key": self._session.get("private_key"),
-            "user_id": self._session.get("user_id"),
-            "name": self._session.get("name"),
-        }
+        return self._session["auth"]
+
+    # ---------- chats / messages (pyrubi Client) ----------
 
     async def get_chats(self, limit: int = 50) -> List[ChatInfo]:
         self._ensure()
 
         def _fetch() -> List[ChatInfo]:
-            methods = self._methods()
-            chats: List[ChatInfo] = []
-            # pyrubi may expose getChats / get_chats depending on version
-            for attr in ("getChats", "get_chats", "getDialogs"):
-                if hasattr(methods, attr):
-                    try:
-                        raw = getattr(methods, attr)()
-                        items = raw if isinstance(raw, list) else raw.get("chats", raw.get("data", []))
-                        for item in (items or [])[:limit]:
-                            if not isinstance(item, dict):
-                                continue
-                            guid = item.get("object_guid") or item.get("guid") or item.get("chat_id") or ""
-                            title = (
-                                item.get("title")
-                                or item.get("channel_title")
-                                or item.get("group_title")
-                                or str(guid)
-                            )
-                            chats.append(
-                                ChatInfo(
-                                    id=str(guid),
-                                    title=str(title),
-                                    chat_type=str(item.get("type", "other")),
-                                    extra=item,
-                                )
-                            )
-                        break
-                    except Exception as exc:
-                        logger.warning(f"Rubika {attr} failed: {exc}")
-            return chats
+            raw = self._client.get_chats(start_id=None)
+            items = raw.get("chats", []) if isinstance(raw, dict) else []
+            out: List[ChatInfo] = []
+            for item in items[:limit]:
+                if not isinstance(item, dict):
+                    continue
+                guid = str(item.get("object_guid") or "")
+                abs_obj = item.get("abs_object") or {}
+                title = (
+                    item.get("title")
+                    or abs_obj.get("title")
+                    or abs_obj.get("first_name")
+                    or guid
+                )
+                last = item.get("last_message") or {}
+                out.append(
+                    ChatInfo(
+                        id=guid,
+                        title=str(title),
+                        chat_type=str(item.get("type") or abs_obj.get("type") or "chat"),
+                        unread_count=int(item.get("count_unseen") or item.get("unread_count") or 0),
+                        last_message=str(last.get("text") or "") or None,
+                        extra={"platform": "rubika", **item},
+                    )
+                )
+            return out
 
         return await asyncio.to_thread(_fetch)
 
@@ -210,29 +203,32 @@ class RubikaPlatform(BasePlatform):
         self._ensure()
 
         def _fetch() -> List[MessageInfo]:
-            methods = self._methods()
+            raw = self._client.get_messages(
+                object_guid=chat_id,
+                max_message_id=None,
+                filter_type=None,
+                limit=limit,
+            )
+            items = raw.get("messages", []) if isinstance(raw, dict) else []
             out: List[MessageInfo] = []
-            for attr in ("getMessages", "get_messages", "getChatMessages"):
-                if hasattr(methods, attr):
-                    try:
-                        raw = getattr(methods, attr)(chat_id)
-                        items = raw if isinstance(raw, list) else raw.get("messages", [])
-                        for m in (items or [])[:limit]:
-                            if not isinstance(m, dict):
-                                continue
-                            out.append(
-                                MessageInfo(
-                                    id=str(m.get("message_id") or m.get("id") or ""),
-                                    chat_id=str(chat_id),
-                                    text=str(m.get("text") or m.get("message") or ""),
-                                    sender_id=str(m.get("author_object_guid") or "") or None,
-                                    is_outgoing=bool(m.get("is_mine") or m.get("out")),
-                                    extra=m,
-                                )
-                            )
-                        break
-                    except Exception as exc:
-                        logger.warning(f"Rubika {attr} failed: {exc}")
+            for m in items:
+                if not isinstance(m, dict):
+                    continue
+                out.append(
+                    MessageInfo(
+                        id=str(m.get("message_id") or ""),
+                        chat_id=str(chat_id),
+                        text=str(m.get("text") or ""),
+                        sender_id=str(m.get("author_object_guid") or "") or None,
+                        sender_name=None,
+                        timestamp=str(m.get("time") or m.get("created_time") or "") or None,
+                        is_outgoing=bool(m.get("is_mine")),
+                        reply_to_id=str(m.get("reply_to_message_id") or "") or None,
+                        extra={"platform": "rubika", **m},
+                    )
+                )
+            # pyrubi returns newest first often — reverse for UI chronological
+            out.reverse()
             return out
 
         return await asyncio.to_thread(_fetch)
@@ -247,60 +243,34 @@ class RubikaPlatform(BasePlatform):
     ) -> MessageInfo:
         self._ensure()
 
-        def _send() -> Any:
-            methods = self._methods()
-            for attr in ("sendMessage", "send_message"):
-                if hasattr(methods, attr):
-                    fn = getattr(methods, attr)
-                    try:
-                        return fn(chat_id, text)
-                    except TypeError:
-                        return fn(object_guid=chat_id, text=text)
-            raise RuntimeError("pyrubi has no sendMessage method in this version")
+        def _send() -> dict:
+            return self._client.send_text(
+                object_guid=chat_id,
+                text=text,
+                message_id=reply_to,
+            )
 
         result = await asyncio.to_thread(_send)
         mid = ""
         if isinstance(result, dict):
-            mid = str(result.get("message_id") or result.get("id") or "")
+            msg = result.get("message") or result
+            mid = str(msg.get("message_id") or result.get("message_id") or "")
         return MessageInfo(
             id=mid or "sent",
             chat_id=str(chat_id),
             text=text,
             is_outgoing=True,
             reply_to_id=reply_to,
-            extra={"raw": result} if not isinstance(result, dict) else result,
+            extra={"platform": "rubika", "raw": result},
         )
 
     async def join_chat(self, target: str) -> dict:
-        """Join group/channel by link or username — ozv_grams logic."""
         self._ensure()
 
         def _join() -> dict:
-            methods = self._methods()
-            target_s = target.strip()
             try:
-                if "joing" in target_s or "joinc" in target_s:
-                    result = methods.joinChat(guidOrLink=target_s)
-                    return {"success": True, "raw": result}
-                clean = target_s[1:] if target_s.startswith("@") else target_s
-                if "rubika.ir/" in clean and "join" not in clean:
-                    clean = clean.rstrip("/").split("/")[-1]
-                try:
-                    info = methods.getChatInfoByUsername(username=clean)
-                    guid = None
-                    if "channel" in info:
-                        guid = info["channel"]["channel_guid"]
-                        title = info["channel"].get("channel_title", "")
-                    elif "group" in info:
-                        guid = info["group"]["group_guid"]
-                        title = info["group"].get("group_title", "")
-                    else:
-                        return {"success": False, "error": "پیدا نشد یا کاربر است"}
-                    result = methods.joinChat(guidOrLink=guid)
-                    return {"success": True, "title": title, "raw": result}
-                except Exception:
-                    result = methods.joinChat(guidOrLink=target_s)
-                    return {"success": True, "raw": result}
+                result = self._client.join_chat(guid_or_link=target)
+                return {"success": True, "raw": result}
             except Exception as e:
                 err = str(e)
                 if "ALREADY" in err.upper():
@@ -310,5 +280,5 @@ class RubikaPlatform(BasePlatform):
         return await asyncio.to_thread(_join)
 
     def _ensure(self) -> None:
-        if not self.is_connected or not self._session.get("auth"):
+        if not self.is_connected or not self._client:
             raise RuntimeError("Rubika is not connected")
